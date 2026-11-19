@@ -1,0 +1,43 @@
+name: sync_todo
+description: 同步待办 — Windows 与 Android 待办、笔记与提醒
+publish_to: 'none'
+version: 1.1.0+11
+
+environment:
+  sdk: ^3.14.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  supabase_flutter: ^2.9.1
+  window_manager: ^0.5.1
+  screen_retriever: ^0.2.2
+  tray_manager: ^0.5.0
+  launch_at_startup: ^0.5.1
+  uuid: ^4.5.1
+  path_provider: ^2.1.5
+  shared_preferences: ^2.5.3
+  intl: ^0.20.2
+  connectivity_plus: ^6.1.4
+  collection: ^1.19.1
+  timezone: ^0.10.1
+  flutter_timezone: ^4.1.1
+  flutter_local_notifications: ^18.0.1
+  permission_handler: ^11.4.0
+  http: ^1.2.2
+  open_filex: ^4.6.0
+  android_intent_plus: ^5.3.0
+  package_info_plus: ^8.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/tray_icon.ico

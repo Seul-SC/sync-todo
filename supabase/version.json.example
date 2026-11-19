@@ -1,0 +1,11 @@
+{
+  "version": "1.1.0",
+  "build": 11,
+  "notes": "支持笔记、循环待办完成记录、应用内更新与时区设置。",
+  "windows": {
+    "url": "http://YOUR_SUPABASE_HOST/storage/v1/object/public/app-updates/SyncTodo-Setup-1.1.0.exe"
+  },
+  "android": {
+    "url": "http://YOUR_SUPABASE_HOST/storage/v1/object/public/app-updates/sync-todo-1.1.0.apk"
+  }
+}
