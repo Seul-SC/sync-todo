@@ -7,7 +7,9 @@ import '../platform/app_os.dart';
 import '../services/app_clock.dart';
 import 'reminder_skin.dart';
 
-/// 同时展示多条到点提醒：一层遮罩 + 多张独立卡片，完成/稍后按单条操作。
+/// 同时展示多条到点提醒：一层遮罩 + 多张独立卡片。
+/// Windows：前面打勾立即完成并同步；右下角「确定」只关窗；保留稍后提醒。
+/// Android：仍是「完成」+「稍后提醒」。
 class ReminderOverlayStack extends StatelessWidget {
   const ReminderOverlayStack({
     super.key,
@@ -15,6 +17,7 @@ class ReminderOverlayStack extends StatelessWidget {
     required this.clock,
     required this.onComplete,
     required this.onSnooze,
+    this.onDismiss,
     this.skin,
   });
 
@@ -22,6 +25,7 @@ class ReminderOverlayStack extends StatelessWidget {
   final AppClock clock;
   final Future<void> Function(TodoItem item) onComplete;
   final Future<void> Function(TodoItem item) onSnooze;
+  final Future<void> Function(TodoItem item)? onDismiss;
   final ReminderSkin? skin;
 
   @override
@@ -59,6 +63,9 @@ class ReminderOverlayStack extends StatelessWidget {
                       compact: compact,
                       onComplete: () => onComplete(item),
                       onSnooze: () => onSnooze(item),
+                      onDismiss: onDismiss == null
+                          ? null
+                          : () => onDismiss!(item),
                     );
                   },
                 ),
@@ -79,6 +86,7 @@ class _ReminderCardHost extends StatefulWidget {
     required this.compact,
     required this.onComplete,
     required this.onSnooze,
+    this.onDismiss,
   });
 
   final TodoItem item;
@@ -87,6 +95,7 @@ class _ReminderCardHost extends StatefulWidget {
   final bool compact;
   final Future<void> Function() onComplete;
   final Future<void> Function() onSnooze;
+  final Future<void> Function()? onDismiss;
 
   @override
   State<_ReminderCardHost> createState() => _ReminderCardHostState();
@@ -155,6 +164,9 @@ class _ReminderCardHostState extends State<_ReminderCardHost>
               compact: widget.compact,
               onComplete: () => _closeThen(widget.onComplete),
               onSnooze: () => _closeThen(widget.onSnooze),
+              onDismiss: widget.onDismiss == null
+                  ? null
+                  : () => _closeThen(widget.onDismiss!),
             ),
           ),
         );
@@ -163,7 +175,7 @@ class _ReminderCardHostState extends State<_ReminderCardHost>
   }
 }
 
-/// 单条提醒卡片，完成 / 稍后提醒。
+/// 单条提醒卡片。
 class ReminderCard extends StatelessWidget {
   const ReminderCard({
     super.key,
@@ -176,6 +188,7 @@ class ReminderCard extends StatelessWidget {
     required this.compact,
     required this.onComplete,
     required this.onSnooze,
+    this.onDismiss,
   });
 
   final ReminderSkin skin;
@@ -187,6 +200,7 @@ class ReminderCard extends StatelessWidget {
   final bool compact;
   final VoidCallback onComplete;
   final VoidCallback onSnooze;
+  final VoidCallback? onDismiss;
 
   @override
   Widget build(BuildContext context) {
@@ -214,87 +228,184 @@ class ReminderCard extends StatelessWidget {
           color: skin.cardColor,
           child: Padding(
             padding: EdgeInsets.fromLTRB(28, compact ? 24 : 30, 28, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  skin.eyebrowLabel,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: skin.accentColor,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 1.2,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: skin.titleColor,
-                    fontSize: compact ? 20 : 24,
-                    fontWeight: FontWeight.w700,
-                    height: 1.25,
-                  ),
-                ),
-                if (content.isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  Text(
-                    content,
-                    textAlign: TextAlign.center,
-                    maxLines: 4,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: skin.subtitleColor, fontSize: 14),
-                  ),
-                ],
-                const SizedBox(height: 12),
-                Text(
-                  timeText,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: skin.subtitleColor, fontSize: 14),
-                ),
-                const SizedBox(height: 28),
-                Row(
-                  children: [
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: busy ? null : onComplete,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: skin.accentColor,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        child: Text(skin.completeLabel),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: busy ? null : onSnooze,
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: skin.accentColor,
-                          side: BorderSide(color: skin.accentColor),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        child: Text(skin.snoozeLabel),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  skin.snoozeHint,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: skin.subtitleColor.withValues(alpha: 0.75),
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
+            child: compact ? _androidBody() : _windowsBody(),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _androidBody() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          skin.eyebrowLabel,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: skin.accentColor,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 1.2,
+          ),
+        ),
+        const SizedBox(height: 14),
+        Text(
+          title,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: skin.titleColor,
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            height: 1.25,
+          ),
+        ),
+        if (content.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Text(
+            content,
+            textAlign: TextAlign.center,
+            maxLines: 4,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: skin.subtitleColor, fontSize: 14),
+          ),
+        ],
+        const SizedBox(height: 12),
+        Text(
+          timeText,
+          textAlign: TextAlign.center,
+          style: TextStyle(color: skin.subtitleColor, fontSize: 14),
+        ),
+        const SizedBox(height: 28),
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton(
+                onPressed: busy ? null : onComplete,
+                style: FilledButton.styleFrom(
+                  backgroundColor: skin.accentColor,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                child: Text(skin.completeLabel),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: OutlinedButton(
+                onPressed: busy ? null : onSnooze,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: skin.accentColor,
+                  side: BorderSide(color: skin.accentColor),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                child: Text(skin.snoozeLabel),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          skin.snoozeHint,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: skin.subtitleColor.withValues(alpha: 0.75),
+            fontSize: 12,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _windowsBody() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          skin.eyebrowLabel,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: skin.accentColor,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 1.2,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Checkbox(
+                value: false,
+                onChanged: busy ? null : (_) => onComplete(),
+              ),
+            ),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: skin.titleColor,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      height: 1.25,
+                    ),
+                  ),
+                  if (content.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      content,
+                      maxLines: 4,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: skin.subtitleColor, fontSize: 14),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  Text(
+                    timeText,
+                    style: TextStyle(color: skin.subtitleColor, fontSize: 14),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        Row(
+          children: [
+            OutlinedButton(
+              onPressed: busy ? null : onSnooze,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: skin.accentColor,
+                side: BorderSide(color: skin.accentColor),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              ),
+              child: Text(skin.snoozeLabel),
+            ),
+            const Spacer(),
+            FilledButton(
+              onPressed: busy || onDismiss == null ? null : onDismiss,
+              style: FilledButton.styleFrom(
+                backgroundColor: skin.accentColor,
+                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+              ),
+              child: Text(skin.confirmLabel),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          skin.snoozeHint,
+          style: TextStyle(
+            color: skin.subtitleColor.withValues(alpha: 0.75),
+            fontSize: 12,
+          ),
+        ),
+      ],
     );
   }
 }

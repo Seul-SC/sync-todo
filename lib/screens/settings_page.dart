@@ -12,6 +12,7 @@ import '../services/settings_service.dart';
 import '../services/todo_repository.dart';
 import '../services/update_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/about_sheet.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
@@ -58,7 +59,7 @@ class _SettingsPageState extends State<SettingsPage> {
       builder: (context) => SimpleDialog(
         title: const Text('主题'),
         children: [
-          for (final mode in AppThemeMode.values)
+          for (final mode in AppThemeModeLabel.visible)
             RadioListTile<AppThemeMode>(
               title: Text(mode.label),
               value: mode,
@@ -136,7 +137,7 @@ class _SettingsPageState extends State<SettingsPage> {
     if (!widget.updates.isNewer(info)) {
       if (!silent) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已是最新版本 ${widget.updates.currentVersion}')),
+          SnackBar(content: Text('当前已是最新版（${widget.updates.currentVersion}）')),
         );
       }
       return;
@@ -231,17 +232,37 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             if (isWindowsDesktop) ...[
               _sectionTitle('电脑'),
-              SwitchListTile(
-                secondary: const Icon(Icons.power_settings_new),
-                title: const Text('开机自启'),
-                value: widget.settings.launchAtStartup,
-                onChanged: (v) async {
-                  await widget.desktop?.applyLaunchAtStartup(v);
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(v ? '已开启开机自启' : '已关闭开机自启')),
-                  );
-                },
+              SwitchTheme(
+                data: SwitchThemeData(
+                  thumbColor: WidgetStateProperty.resolveWith((states) {
+                    if (states.contains(WidgetState.selected)) {
+                      return Colors.white;
+                    }
+                    return const Color(0xFFBDBDBD);
+                  }),
+                  trackColor: WidgetStateProperty.resolveWith((states) {
+                    if (states.contains(WidgetState.selected)) {
+                      return Theme.of(context).colorScheme.primary;
+                    }
+                    return const Color(0xFF9E9E9E).withValues(alpha: 0.35);
+                  }),
+                  trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+                ),
+                child: SwitchListTile(
+                  secondary: Icon(
+                    Icons.power_settings_new,
+                    color: widget.settings.launchAtStartup
+                        ? Theme.of(context).colorScheme.primary
+                        : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.35),
+                  ),
+                  title: const Text('开机自启'),
+                  subtitle: const Text('只有程序在运行时才能弹出待办提醒。关闭程序后，到点不会提醒。'),
+                  isThreeLine: true,
+                  value: widget.settings.launchAtStartup,
+                  onChanged: (v) async {
+                    await widget.desktop?.applyLaunchAtStartup(v);
+                  },
+                ),
               ),
               ListTile(
                 leading: const Icon(Icons.notifications_active_outlined),
@@ -314,6 +335,14 @@ class _SettingsPageState extends State<SettingsPage> {
                     )
                   : const Icon(Icons.chevron_right),
               onTap: widget.updates.checking ? null : () => _checkUpdate(),
+            ),
+            _sectionTitle('关于'),
+            ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: const Text('关于'),
+              subtitle: const Text('作者、仓库链接和问题反馈'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => showAboutAppSheet(context),
             ),
             _sectionTitle('账号'),
             ListTile(

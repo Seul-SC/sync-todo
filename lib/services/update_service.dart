@@ -112,8 +112,15 @@ class UpdateService extends ChangeNotifier {
       final res = await http.get(Uri.parse(url)).timeout(
             const Duration(seconds: 15),
           );
+      if (res.statusCode == 404 || res.statusCode == 403) {
+        // 更新通道尚未发布或当前没有更新包时，视为已是最新版。
+        latest = AppUpdateInfo(version: currentVersion, build: currentBuild);
+        error = null;
+        notifyListeners();
+        return latest;
+      }
       if (res.statusCode != 200) {
-        throw Exception('检查更新失败（${res.statusCode}）');
+        throw Exception('服务器暂时无法检查更新（${res.statusCode}）');
       }
       final json = jsonDecode(utf8.decode(res.bodyBytes));
       if (json is! Map) throw Exception('更新清单格式不正确');
@@ -123,7 +130,7 @@ class UpdateService extends ChangeNotifier {
       return latest;
     } catch (e) {
       if (!silent) {
-        error = '无法检查更新：$e';
+        error = '无法检查更新，请检查网络后重试';
         notifyListeners();
       }
       return null;

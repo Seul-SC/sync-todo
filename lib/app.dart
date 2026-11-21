@@ -185,6 +185,7 @@ class _SyncTodoAppState extends State<SyncTodoApp> with WidgetsBindingObserver {
                         clock: widget.settings.clock,
                         onComplete: reminder.completeItem,
                         onSnooze: reminder.snoozeItem,
+                        onDismiss: reminder.dismissItem,
                       ),
                   ],
                 );

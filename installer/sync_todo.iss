@@ -1,7 +1,7 @@
 ; 同步待办 · Inno Setup 安装脚本
 #define MyAppName "同步待办"
-#define MyAppVersion "1.1.0"
-#define MyAppPublisher "SyncTodo"
+#define MyAppVersion "1.2.0"
+#define MyAppPublisher "Seul_SC_照晨"
 #define MyAppExeName "sync_todo.exe"
 
 [Setup]
@@ -12,6 +12,9 @@ AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\SyncTodo
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
+DisableDirPage=no
+UsePreviousAppDir=yes
+PrivilegesRequiredOverridesAllowed=dialog
 OutputDir=..\dist
 OutputBaseFilename=SyncTodo-Setup-{#MyAppVersion}
 SetupIconFile=..\windows\runner\resources\app_icon.ico
@@ -23,8 +26,8 @@ ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayIcon={app}\{#MyAppExeName}
 
 [Tasks]
-Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加选项:"; Flags: unchecked
-Name: "startupicon"; Description: "开机时自动启动同步待办"; GroupDescription: "附加选项:"
+Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加选项:"
+Name: "startupicon"; Description: "开机时自动启动同步待办（只有程序在运行时才能弹出待办提醒）"; GroupDescription: "附加选项:"
 
 [Files]
 Source: "..\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs

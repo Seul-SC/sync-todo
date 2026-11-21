@@ -18,6 +18,28 @@ namespace {
 
 constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
 
+UINT SyncTodoActivateMessage() {
+  static const UINT kMsg = RegisterWindowMessageW(L"SyncTodo_Activate");
+  return kMsg;
+}
+
+void RevealExistingWindow(HWND hwnd) {
+  if (!hwnd) {
+    return;
+  }
+  const LONG ex = GetWindowLong(hwnd, GWL_EXSTYLE);
+  if (ex & WS_EX_TOOLWINDOW) {
+    SetWindowLong(hwnd, GWL_EXSTYLE, (ex & ~WS_EX_TOOLWINDOW) | WS_EX_APPWINDOW);
+  }
+  if (IsIconic(hwnd)) {
+    ShowWindow(hwnd, SW_RESTORE);
+  } else {
+    ShowWindow(hwnd, SW_SHOW);
+  }
+  SetForegroundWindow(hwnd);
+  BringWindowToTop(hwnd);
+}
+
 /// Registry key for app theme preference.
 ///
 /// A value of 0 indicates apps should use dark mode. A non-zero or missing
@@ -178,6 +200,14 @@ Win32Window::MessageHandler(HWND hwnd,
                             UINT const message,
                             WPARAM const wparam,
                             LPARAM const lparam) noexcept {
+  if (message == SyncTodoActivateMessage()) {
+    RevealExistingWindow(hwnd);
+    if (child_content_ != nullptr) {
+      SetFocus(child_content_);
+    }
+    return 0;
+  }
+
   switch (message) {
     case WM_DESTROY:
       window_handle_ = nullptr;
