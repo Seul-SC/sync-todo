@@ -191,6 +191,13 @@ class ReminderController extends ChangeNotifier with WidgetsBindingObserver {
     await _leavePopupIfNeeded();
   }
 
+  /// 只关掉本机这一张提醒窗，不标记完成、不改提醒时间。
+  Future<void> dismissItem(TodoItem item) async {
+    _active.removeWhere((e) => e.id == item.id);
+    notifyListeners();
+    await _leavePopupIfNeeded();
+  }
+
   /// 兼容旧的单条接口。
   Future<void> completeCurrent() async {
     final item = current;

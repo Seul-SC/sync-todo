@@ -1,3 +1,5 @@
+import 'dart:ffi';
+import 'package:ffi/ffi.dart';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -22,6 +24,39 @@ DesktopShell createDesktopShell({
   );
 }
 
+final DynamicLibrary _user32 = DynamicLibrary.open('user32.dll');
+
+int _endMenu() {
+  try {
+    return _user32.lookupFunction<Int32 Function(), int Function()>('EndMenu')();
+  } catch (_) {
+    return 0;
+  }
+}
+
+/// 托盘菜单在主窗口隐藏时，需要先把窗口设为前台，点桌面才能把菜单关掉。
+void _focusAppWindowForTrayMenu() {
+  try {
+    final findWindow = _user32.lookupFunction<
+        IntPtr Function(Pointer<Utf16>, Pointer<Utf16>),
+        int Function(Pointer<Utf16>, Pointer<Utf16>)>('FindWindowW');
+    final setForeground = _user32.lookupFunction<
+        Int32 Function(IntPtr),
+        int Function(int)>('SetForegroundWindow');
+    final className = 'FLUTTER_RUNNER_WIN32_WINDOW'.toNativeUtf16();
+    final title = '同步待办'.toNativeUtf16();
+    try {
+      final hwnd = findWindow(className, title);
+      if (hwnd != 0) {
+        setForeground(hwnd);
+      }
+    } finally {
+      malloc.free(className);
+      malloc.free(title);
+    }
+  } catch (_) {}
+}
+
 class WindowsDesktopShell with WindowListener, TrayListener implements DesktopShell {
   WindowsDesktopShell({
     required this.settings,
@@ -36,6 +71,10 @@ class WindowsDesktopShell with WindowListener, TrayListener implements DesktopSh
   final bool Function()? isReminderShowing;
 
   bool _quitting = false;
+
+  Future<void> _closeTrayMenu() async {
+    _endMenu();
+  }
 
   @override
   Future<void> init() async {
@@ -75,6 +114,7 @@ class WindowsDesktopShell with WindowListener, TrayListener implements DesktopSh
 
   @override
   Future<void> showMainWindow() async {
+    await _closeTrayMenu();
     await windowManager.setSkipTaskbar(false);
     await windowManager.show();
     await windowManager.focus();
@@ -83,19 +123,31 @@ class WindowsDesktopShell with WindowListener, TrayListener implements DesktopSh
 
   @override
   Future<void> hideToTray() async {
+    await _closeTrayMenu();
     await windowManager.hide();
     await windowManager.setSkipTaskbar(true);
   }
 
   @override
   Future<void> quitApp() async {
+    if (_quitting) {
+      exit(0);
+    }
     _quitting = true;
     try {
-      await trayManager.destroy();
+      await _closeTrayMenu();
     } catch (_) {}
-    await windowManager.setPreventClose(false);
-    await windowManager.destroy();
+    try {
+      await trayManager.destroy().timeout(const Duration(milliseconds: 400));
+    } catch (_) {}
+    try {
+      await windowManager.setPreventClose(false);
+    } catch (_) {}
+    try {
+      await windowManager.destroy().timeout(const Duration(milliseconds: 600));
+    } catch (_) {}
     onQuit();
+    exit(0);
   }
 
   @override
@@ -106,12 +158,26 @@ class WindowsDesktopShell with WindowListener, TrayListener implements DesktopSh
   }
 
   @override
+  void onWindowBlur() {
+    _closeTrayMenu();
+  }
+
+  @override
+  void onWindowEvent(String eventName) {
+    if (eventName == 'blur' || eventName == 'move') {
+      _closeTrayMenu();
+    }
+  }
+
+  @override
   void onTrayIconMouseDown() {
+    _closeTrayMenu();
     showMainWindow();
   }
 
   @override
   void onTrayIconRightMouseDown() {
+    _focusAppWindowForTrayMenu();
     trayManager.popUpContextMenu();
   }
 

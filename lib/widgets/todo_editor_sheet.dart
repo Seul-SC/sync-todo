@@ -1,9 +1,12 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../models/note_item.dart';
 import '../models/todo_item.dart';
 import '../platform/app_os.dart';
+import 'android_schedule_picker.dart';
 import '../services/app_clock.dart';
 import '../services/note_repository.dart';
 
@@ -66,8 +69,7 @@ class _TodoEditorBody extends StatefulWidget {
 }
 
 class _TodoEditorBodyState extends State<_TodoEditorBody> {
-  late final TextEditingController _title;
-  late final TextEditingController _content;
+  late final TitleContentController _body;
   late bool _noRemind;
   late DateTime _date;
   late TimeOfDay _time;
@@ -89,13 +91,12 @@ class _TodoEditorBodyState extends State<_TodoEditorBody> {
     super.initState();
     final e = widget.existing;
     final clock = widget.clock;
-    _title = TextEditingController(text: e?.title ?? '');
-    _content = TextEditingController(text: e?.content ?? '');
+    _body = TitleContentController(text: TitleContentController.compose(e?.title, e?.content));
     _noRemind = e == null ? false : e.remindAt == null;
-    // 默认今天 12:00（所选时区），即使已经过了中午也不改到下一个整点。
+    // 打开新建待办并设置时间时，默认就是当前时间。
     final base = e?.remindAt != null
         ? clock.fromUtc(e!.remindAt!)
-        : clock.todayAt(12, 0);
+        : clock.now();
     _date = DateTime(base.year, base.month, base.day);
     _time = TimeOfDay(hour: base.hour, minute: base.minute);
     _recurrence = e?.recurrence ?? RecurrenceType.none;
@@ -105,8 +106,7 @@ class _TodoEditorBodyState extends State<_TodoEditorBody> {
 
   @override
   void dispose() {
-    _title.dispose();
-    _content.dispose();
+    _body.dispose();
     super.dispose();
   }
 
@@ -123,22 +123,25 @@ class _TodoEditorBodyState extends State<_TodoEditorBody> {
     if (picked != null) setState(() => _date = picked);
   }
 
-  Future<void> _pickTime() async {
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: _time,
-      helpText: '选择时间',
-      cancelText: '取消',
-      confirmText: '确定',
+  Future<void> _pickAndroidSchedule() async {
+    final picked = await showAndroidSchedulePicker(
+      context,
+      date: _date,
+      time: _time,
     );
-    if (picked != null) setState(() => _time = picked);
+    if (picked == null) return;
+    setState(() {
+      _date = picked.date;
+      _time = picked.time;
+    });
   }
 
   void _submit() {
-    final title = _title.text.trim();
+    final parsed = _body.parsed();
+    final title = parsed.$1;
     if (title.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('标题不能为空')),
+        const SnackBar(content: Text('请先填写第一行标题')),
       );
       return;
     }
@@ -154,7 +157,7 @@ class _TodoEditorBodyState extends State<_TodoEditorBody> {
     }
     Navigator.of(context).pop(TodoEditorResult(
       title: title,
-      content: _content.text,
+      content: parsed.$2,
       remindAt: remindAt,
       recurrence: _noRemind ? RecurrenceType.none : _recurrence,
       weekdays: _recurrence == RecurrenceType.weekly && !_noRemind
@@ -181,25 +184,16 @@ class _TodoEditorBodyState extends State<_TodoEditorBody> {
             ),
             const SizedBox(height: 16),
             TextField(
-              controller: _title,
+              controller: _body,
               autofocus: true,
               decoration: const InputDecoration(
-                labelText: '标题',
-                hintText: '要做什么？',
-              ),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _content,
-              decoration: const InputDecoration(
-                labelText: '内容',
-                hintText: '可多行，不限长度',
+                hintText: '第一行是标题，下面是内容。也可以只写一行标题。',
                 alignLabelWithHint: true,
               ),
-              minLines: 3,
-              maxLines: 10,
+              minLines: 6,
+              maxLines: 16,
               keyboardType: TextInputType.multiline,
+              textCapitalization: TextCapitalization.sentences,
             ),
             const SizedBox(height: 16),
             SwitchListTile(
@@ -209,25 +203,29 @@ class _TodoEditorBodyState extends State<_TodoEditorBody> {
               onChanged: (v) => setState(() => _noRemind = v),
             ),
             if (!_noRemind) ...[
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _pickDate,
-                      icon: const Icon(Icons.calendar_today_outlined),
-                      label: Text(dateLabel),
+              if (isWindowsDesktop)
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _pickDate,
+                        icon: const Icon(Icons.calendar_today_outlined),
+                        label: Text(dateLabel),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _pickTime,
-                      icon: const Icon(Icons.schedule_outlined),
-                      label: Text(timeLabel),
+                    const SizedBox(width: 10),
+                    _WheelTimeField(
+                      time: _time,
+                      onChanged: (t) => setState(() => _time = t),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                )
+              else
+                OutlinedButton.icon(
+                  onPressed: _pickAndroidSchedule,
+                  icon: const Icon(Icons.schedule_outlined),
+                  label: Text('$dateLabel  $timeLabel'),
+                ),
               const SizedBox(height: 12),
               Text('循环', style: Theme.of(context).textTheme.titleSmall),
               const SizedBox(height: 8),
@@ -277,6 +275,143 @@ class _TodoEditorBodyState extends State<_TodoEditorBody> {
               child: Text(widget.existing == null ? '添加' : '保存'),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+
+class _WheelTimeField extends StatelessWidget {
+  const _WheelTimeField({required this.time, required this.onChanged});
+
+  final TimeOfDay time;
+  final ValueChanged<TimeOfDay> onChanged;
+
+  void _adjust({int hours = 0, int minutes = 0}) {
+    var hour = (time.hour + hours) % 24;
+    if (hour < 0) hour += 24;
+    var minute = (time.minute + minutes) % 60;
+    if (minute < 0) minute += 60;
+    onChanged(TimeOfDay(hour: hour, minute: minute));
+  }
+
+  void _onScroll(PointerEvent event, {required bool hour}) {
+    if (event is! PointerScrollEvent) return;
+    final dy = event.scrollDelta.dy;
+    final dx = event.scrollDelta.dx;
+    if (dy == 0 && dx == 0) return;
+    final increase = dy < 0 || (dy == 0 && dx < 0);
+    final step = increase ? 1 : -1;
+    if (hour) {
+      _adjust(hours: step);
+      return;
+    }
+    final pressed = HardwareKeyboard.instance.logicalKeysPressed;
+    final coarse = pressed.contains(LogicalKeyboardKey.shiftLeft) ||
+        pressed.contains(LogicalKeyboardKey.shiftRight);
+    _adjust(minutes: step * (coarse ? 5 : 1));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final numberStyle = theme.textTheme.headlineSmall?.copyWith(
+      fontFeatures: const [FontFeature.tabularFigures()],
+      fontWeight: FontWeight.w600,
+    );
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 2, 8, 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _WheelDigit(
+              value: time.hour.toString().padLeft(2, '0'),
+              style: numberStyle,
+              tooltip: '滚动滚轮调整小时',
+              onScroll: (event) => _onScroll(event, hour: true),
+              onIncrease: () => _adjust(hours: 1),
+              onDecrease: () => _adjust(hours: -1),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Text(':', style: numberStyle),
+            ),
+            _WheelDigit(
+              value: time.minute.toString().padLeft(2, '0'),
+              style: numberStyle,
+              tooltip: '滚动滚轮调整分钟，按住 Shift 一次跳 5 分钟',
+              onScroll: (event) => _onScroll(event, hour: false),
+              onIncrease: () => _adjust(minutes: 1),
+              onDecrease: () => _adjust(minutes: -1),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WheelDigit extends StatelessWidget {
+  const _WheelDigit({
+    required this.value,
+    required this.style,
+    required this.tooltip,
+    required this.onScroll,
+    required this.onIncrease,
+    required this.onDecrease,
+  });
+
+  final String value;
+  final TextStyle? style;
+  final String tooltip;
+  final void Function(PointerEvent event) onScroll;
+  final VoidCallback onIncrease;
+  final VoidCallback onDecrease;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      waitDuration: const Duration(milliseconds: 400),
+      child: Listener(
+        onPointerSignal: (event) {
+          if (event is PointerScrollEvent) {
+            GestureBinding.instance.pointerSignalResolver.register(event, onScroll);
+          }
+        },
+        child: MouseRegion(
+          cursor: SystemMouseCursors.resizeUpDown,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 28, minHeight: 24),
+                iconSize: 18,
+                onPressed: onIncrease,
+                icon: const Icon(Icons.keyboard_arrow_up),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Text(value, style: style),
+              ),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 28, minHeight: 24),
+                iconSize: 18,
+                onPressed: onDecrease,
+                icon: const Icon(Icons.keyboard_arrow_down),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -378,6 +513,48 @@ class _LinkedNotesSection extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+/// 第一行加粗作为标题，其余行作为内容。
+class TitleContentController extends TextEditingController {
+  TitleContentController({super.text});
+
+  static String compose(String? title, String? content) {
+    final t = (title ?? '').trimRight();
+    final c = content ?? '';
+    if (c.trim().isEmpty) return t;
+    if (t.isEmpty) return c;
+    return '$t\n$c';
+  }
+
+  (String, String) parsed() {
+    final raw = text.replaceAll('\r\n', '\n');
+    final breakAt = raw.indexOf('\n');
+    if (breakAt < 0) {
+      return (raw.trim(), '');
+    }
+    return (raw.substring(0, breakAt).trim(), raw.substring(breakAt + 1));
+  }
+
+  @override
+  TextSpan buildTextSpan({
+    required BuildContext context,
+    TextStyle? style,
+    required bool withComposing,
+  }) {
+    final text = this.text;
+    final breakAt = text.indexOf('\n');
+    final titleStyle = (style ?? const TextStyle()).copyWith(fontWeight: FontWeight.w700);
+    if (breakAt < 0) {
+      return TextSpan(style: titleStyle, text: text);
+    }
+    return TextSpan(
+      children: [
+        TextSpan(style: titleStyle, text: text.substring(0, breakAt)),
+        TextSpan(style: style, text: text.substring(breakAt)),
+      ],
     );
   }
 }

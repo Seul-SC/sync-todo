@@ -34,6 +34,8 @@ class SettingsService extends ChangeNotifier {
 
   AppThemeMode get themeMode {
     final raw = _prefs.getString(_themeKey);
+    // 旧版「天蓝」并入「涟漪」
+    if (raw == 'skyBlue') return AppThemeMode.ripple;
     return AppThemeMode.values.firstWhere(
       (e) => e.name == raw,
       orElse: () => AppThemeMode.light,
