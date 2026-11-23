@@ -1,12 +1,12 @@
 import 'dart:async';
 
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/todo_item.dart';
 import 'app_clock.dart';
 import 'local_store.dart';
+import 'network_guard.dart';
 
 class TodoRepository extends ChangeNotifier {
   TodoRepository({
@@ -83,10 +83,7 @@ class TodoRepository extends ChangeNotifier {
     }
   }
 
-  Future<bool> _online() async {
-    final result = await Connectivity().checkConnectivity();
-    return result.any((e) => e != ConnectivityResult.none);
-  }
+  Future<bool> _online() => hasNetwork();
 
   Future<void> pull({bool silent = false}) async {
     final uid = _userId;
@@ -102,11 +99,11 @@ class TodoRepository extends ChangeNotifier {
       notifyListeners();
     }
     try {
-      final rows = await _client
+      final rows = await withNetworkTimeout(_client
           .from('todos')
           .select()
           .eq('user_id', uid)
-          .order('updated_at');
+          .order('updated_at'));
       final remote = (rows as List)
           .map((e) => TodoItem.fromJson(Map<String, dynamic>.from(e as Map)))
           .toList();
@@ -140,11 +137,11 @@ class TodoRepository extends ChangeNotifier {
   Future<void> pushItem(TodoItem item) async {
     if (!await _online()) return;
     try {
-      await _client.rpc('upsert_todo', params: item.toUpsertParams());
+      await withNetworkTimeout(_client.rpc('upsert_todo', params: item.toUpsertParams()));
     } catch (e) {
       debugPrint('pushItem failed: $e');
       try {
-        await _client.from('todos').upsert(item.toJson());
+        await withNetworkTimeout(_client.from('todos').upsert(item.toJson()));
       } catch (e2) {
         debugPrint('upsert fallback failed: $e2');
       }

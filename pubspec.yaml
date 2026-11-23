@@ -1,8 +1,7 @@
 name: sync_todo
 description: 同步待办 — Windows 与 Android 待办、笔记与提醒
 publish_to: 'none'
-version: 1.2.0+14
-
+version: 1.2.1+15
 environment:
   sdk: ^3.14.0
 

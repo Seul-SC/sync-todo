@@ -1,6 +1,6 @@
-; 同步待办 · Inno Setup 安装脚本
+﻿; 同步待办 · Inno Setup 安装脚本
 #define MyAppName "同步待办"
-#define MyAppVersion "1.2.0"
+#define MyAppVersion "1.2.1"
 #define MyAppPublisher "Seul_SC_照晨"
 #define MyAppExeName "sync_todo.exe"
 

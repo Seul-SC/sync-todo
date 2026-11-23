@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -8,6 +7,7 @@ import '../models/folder_item.dart';
 import '../models/note_item.dart';
 import '../models/note_todo_link.dart';
 import 'local_store.dart';
+import 'network_guard.dart';
 
 class NoteRepository extends ChangeNotifier {
   NoteRepository({
@@ -80,10 +80,7 @@ class NoteRepository extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> _online() async {
-    final result = await Connectivity().checkConnectivity();
-    return result.any((e) => e != ConnectivityResult.none);
-  }
+  Future<bool> _online() => hasNetwork();
 
   Future<void> _persistNotes() async {
     final uid = _userId;
@@ -152,7 +149,7 @@ class NoteRepository extends ChangeNotifier {
   }
 
   Future<void> _pullFolders(String uid) async {
-    final rows = await _client.from('folders').select().eq('user_id', uid);
+    final rows = await withNetworkTimeout(_client.from('folders').select().eq('user_id', uid));
     final remote = (rows as List)
         .map((e) => FolderItem.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList();
@@ -169,7 +166,7 @@ class NoteRepository extends ChangeNotifier {
   }
 
   Future<void> _pullNotes(String uid) async {
-    final rows = await _client.from('notes').select().eq('user_id', uid);
+    final rows = await withNetworkTimeout(_client.from('notes').select().eq('user_id', uid));
     final remote = (rows as List)
         .map((e) => NoteItem.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList();
@@ -187,7 +184,7 @@ class NoteRepository extends ChangeNotifier {
 
   Future<void> _pullLinks(String uid) async {
     final rows =
-        await _client.from('note_todo_links').select().eq('user_id', uid);
+        await withNetworkTimeout(_client.from('note_todo_links').select().eq('user_id', uid));
     final remote = (rows as List)
         .map((e) => NoteTodoLink.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList();
@@ -219,11 +216,11 @@ class NoteRepository extends ChangeNotifier {
   Future<void> pushFolder(FolderItem item) async {
     if (!await _online()) return;
     try {
-      await _client.rpc('upsert_folder', params: item.toUpsertParams());
+      await withNetworkTimeout(_client.rpc('upsert_folder', params: item.toUpsertParams()));
     } catch (e) {
       debugPrint('pushFolder failed: $e');
       try {
-        await _client.from('folders').upsert(item.toJson());
+        await withNetworkTimeout(_client.from('folders').upsert(item.toJson()));
       } catch (e2) {
         debugPrint('upsert folder fallback failed: $e2');
       }
@@ -233,11 +230,11 @@ class NoteRepository extends ChangeNotifier {
   Future<void> pushNote(NoteItem item) async {
     if (!await _online()) return;
     try {
-      await _client.rpc('upsert_note', params: item.toUpsertParams());
+      await withNetworkTimeout(_client.rpc('upsert_note', params: item.toUpsertParams()));
     } catch (e) {
       debugPrint('pushNote failed: $e');
       try {
-        await _client.from('notes').upsert(item.toJson());
+        await withNetworkTimeout(_client.from('notes').upsert(item.toJson()));
       } catch (e2) {
         debugPrint('upsert note fallback failed: $e2');
       }
@@ -247,7 +244,7 @@ class NoteRepository extends ChangeNotifier {
   Future<void> _pushLink(NoteTodoLink link) async {
     if (!await _online()) return;
     try {
-      await _client.from('note_todo_links').upsert(link.toJson());
+      await withNetworkTimeout(_client.from('note_todo_links').upsert(link.toJson()));
     } catch (e) {
       debugPrint('push link failed: $e');
     }
@@ -435,12 +432,12 @@ class NoteRepository extends ChangeNotifier {
     final uid = _userId;
     if (uid == null || !await _online()) return;
     try {
-      await _client
+      await withNetworkTimeout(_client
           .from('note_todo_links')
           .delete()
           .eq('note_id', noteId)
           .eq('todo_id', todoId)
-          .eq('user_id', uid);
+          .eq('user_id', uid));
     } catch (e) {
       debugPrint('unlink failed: $e');
     }

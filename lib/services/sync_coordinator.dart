@@ -39,9 +39,10 @@ class SyncCoordinator {
       links: cache.links,
     );
     await settings.bindUser(userId, client);
-    await pullAll();
     _startBackgroundSync();
     _subscribeRealtime(userId);
+    // 先让界面用本地缓存打开，同步失败或超时也不能挡住启动。
+    unawaited(pullAll());
   }
 
   Future<void> unbind() async {

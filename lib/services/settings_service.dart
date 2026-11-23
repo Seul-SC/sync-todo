@@ -6,6 +6,7 @@ import '../config.dart';
 import '../models/user_settings.dart';
 import '../theme/app_theme.dart';
 import 'app_clock.dart';
+import 'network_guard.dart';
 
 class SettingsService extends ChangeNotifier {
   SettingsService(this._prefs, {String systemTimezone = 'Asia/Shanghai'})
@@ -70,7 +71,6 @@ class SettingsService extends ChangeNotifier {
     _timezoneUpdatedAt = DateTime.tryParse(
       _prefs.getString(_tzUpdatedKey) ?? '',
     )?.toUtc();
-    await pullRemote();
   }
 
   Future<void> unbind() async {
@@ -112,11 +112,11 @@ class SettingsService extends ChangeNotifier {
     final client = _client;
     if (uid == null || client == null) return;
     try {
-      final row = await client
+      final row = await withNetworkTimeout(client
           .from('user_settings')
           .select()
           .eq('user_id', uid)
-          .maybeSingle();
+          .maybeSingle());
       if (row == null) {
         await _pushRemote();
         return;
@@ -145,18 +145,18 @@ class SettingsService extends ChangeNotifier {
     if (uid == null || client == null) return;
     final updatedAt = _timezoneUpdatedAt ?? DateTime.now().toUtc();
     try {
-      await client.rpc('upsert_user_settings', params: {
+      await withNetworkTimeout(client.rpc('upsert_user_settings', params: {
         'p_timezone': timezone,
         'p_updated_at': updatedAt.toIso8601String(),
-      });
+      }));
     } catch (e) {
       debugPrint('push user_settings failed: $e');
       try {
-        await client.from('user_settings').upsert({
+        await withNetworkTimeout(client.from('user_settings').upsert({
           'user_id': uid,
           'timezone': timezone,
           'updated_at': updatedAt.toIso8601String(),
-        });
+        }));
       } catch (e2) {
         debugPrint('upsert user_settings fallback failed: $e2');
       }
