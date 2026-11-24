@@ -9,10 +9,12 @@ import 'platform/desktop_bootstrap.dart';
 import 'services/notification_service.dart';
 import 'services/settings_service.dart';
 
-Future<void> main() async {
+Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await bootstrapDesktopWindow();
+  // 开机自启传入 --minimized：只在托盘驻留，不弹出主窗口。
+  final startHidden = args.contains('--minimized');
+  await bootstrapDesktopWindow(startHidden: startHidden);
   final systemTimezone = await initializeAppTimezones();
   if (isAndroidDevice) {
     await NotificationService.instance.init();

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../models/folder_item.dart';
@@ -22,6 +23,16 @@ class LocalCache {
   final List<NoteTodoLink> links;
 }
 
+/// 把缓存解析失败当作缓存未命中，让云端同步有机会修复它。
+dynamic decodeLocalCacheJson(String raw, dynamic fallback) {
+  try {
+    if (raw.trim().isEmpty) return fallback;
+    return jsonDecode(raw);
+  } on FormatException {
+    return fallback;
+  }
+}
+
 class LocalStore {
   Future<Directory> _dir() async => getApplicationSupportDirectory();
 
@@ -31,19 +42,30 @@ class LocalStore {
   }
 
   Future<dynamic> _readJson(String name, dynamic fallback) async {
-    final file = await _file(name);
-    if (!await file.exists()) return fallback;
-    final raw = await file.readAsString();
-    if (raw.trim().isEmpty) return fallback;
-    return jsonDecode(raw);
+    try {
+      final file = await _file(name);
+      if (!await file.exists()) return fallback;
+      final raw = await file.readAsString();
+      return decodeLocalCacheJson(raw, fallback);
+    } catch (e) {
+      debugPrint('read local cache $name failed: $e');
+      return fallback;
+    }
   }
 
   Future<void> _writeJson(String name, dynamic value) async {
     final file = await _file(name);
-    if (!await file.exists()) {
-      await file.create(recursive: true);
+    await file.parent.create(recursive: true);
+    // 先完整写入临时文件再替换，避免中途退出留下半个 JSON 文件。
+    final temp = File(
+      '${file.path}.${DateTime.now().microsecondsSinceEpoch}.tmp',
+    );
+    try {
+      await temp.writeAsString(jsonEncode(value), flush: true);
+      await temp.rename(file.path);
+    } finally {
+      if (await temp.exists()) await temp.delete();
     }
-    await file.writeAsString(jsonEncode(value));
   }
 
   Future<LocalCache> loadAll(String userId) async {

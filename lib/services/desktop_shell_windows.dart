@@ -93,7 +93,8 @@ class WindowsDesktopShell with WindowListener, TrayListener implements DesktopSh
     launchAtStartup.setup(
       appName: '同步待办',
       appPath: Platform.resolvedExecutable,
-      args: [],
+      // 开机自启只进托盘，不弹主窗口。
+      args: ['--minimized'],
     );
     await applyLaunchAtStartup(settings.launchAtStartup);
   }

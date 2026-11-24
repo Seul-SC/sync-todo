@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../config.dart';
 import '../models/user_settings.dart';
 import '../theme/app_theme.dart';
 import 'app_clock.dart';
@@ -56,8 +55,9 @@ class SettingsService extends ChangeNotifier {
   }
 
   static String defaultUpdateManifestUrl() {
-    final base = AppConfig.supabaseUrl.replaceAll(RegExp(r'/+$'), '');
-    return '$base/storage/v1/object/public/app-updates/version.json';
+    // 更新清单托管在 Gitee 仓库（国内访问稳定，不占自建服务器带宽）。
+    // 自建部署时可在设置页覆盖为任意地址。
+    return 'https://gitee.com/seul-sc/sync-todo/raw/main/update/version.json';
   }
 
   AppClock get clock => AppClock(

@@ -282,6 +282,15 @@ class _TodoEditorBodyState extends State<_TodoEditorBody> {
 }
 
 
+/// 调整时间：小时按 24 循环、分钟按 60 循环。抽成纯函数方便测试。
+TimeOfDay adjustTimeOfDay(TimeOfDay time, {int hours = 0, int minutes = 0}) {
+  var hour = (time.hour + hours) % 24;
+  if (hour < 0) hour += 24;
+  var minute = (time.minute + minutes) % 60;
+  if (minute < 0) minute += 60;
+  return TimeOfDay(hour: hour, minute: minute);
+}
+
 class _WheelTimeField extends StatelessWidget {
   const _WheelTimeField({required this.time, required this.onChanged});
 
@@ -289,11 +298,13 @@ class _WheelTimeField extends StatelessWidget {
   final ValueChanged<TimeOfDay> onChanged;
 
   void _adjust({int hours = 0, int minutes = 0}) {
-    var hour = (time.hour + hours) % 24;
-    if (hour < 0) hour += 24;
-    var minute = (time.minute + minutes) % 60;
-    if (minute < 0) minute += 60;
-    onChanged(TimeOfDay(hour: hour, minute: minute));
+    onChanged(adjustTimeOfDay(time, hours: hours, minutes: minutes));
+  }
+
+  bool get _shiftPressed {
+    final pressed = HardwareKeyboard.instance.logicalKeysPressed;
+    return pressed.contains(LogicalKeyboardKey.shiftLeft) ||
+        pressed.contains(LogicalKeyboardKey.shiftRight);
   }
 
   void _onScroll(PointerEvent event, {required bool hour}) {
@@ -307,10 +318,7 @@ class _WheelTimeField extends StatelessWidget {
       _adjust(hours: step);
       return;
     }
-    final pressed = HardwareKeyboard.instance.logicalKeysPressed;
-    final coarse = pressed.contains(LogicalKeyboardKey.shiftLeft) ||
-        pressed.contains(LogicalKeyboardKey.shiftRight);
-    _adjust(minutes: step * (coarse ? 5 : 1));
+    _adjust(minutes: step * (_shiftPressed ? 5 : 1));
   }
 
   @override
@@ -333,7 +341,7 @@ class _WheelTimeField extends StatelessWidget {
             _WheelDigit(
               value: time.hour.toString().padLeft(2, '0'),
               style: numberStyle,
-              tooltip: '滚动滚轮调整小时',
+              tooltip: '点击选中后，用滚轮、PgUp/PgDn 或 ↑ ↓ 调整小时',
               onScroll: (event) => _onScroll(event, hour: true),
               onIncrease: () => _adjust(hours: 1),
               onDecrease: () => _adjust(hours: -1),
@@ -345,10 +353,10 @@ class _WheelTimeField extends StatelessWidget {
             _WheelDigit(
               value: time.minute.toString().padLeft(2, '0'),
               style: numberStyle,
-              tooltip: '滚动滚轮调整分钟，按住 Shift 一次跳 5 分钟',
+              tooltip: '点击选中后，用滚轮、PgUp/PgDn 或 ↑ ↓ 调整分钟，按住 Shift 一次跳 5 分钟',
               onScroll: (event) => _onScroll(event, hour: false),
-              onIncrease: () => _adjust(minutes: 1),
-              onDecrease: () => _adjust(minutes: -1),
+              onIncrease: () => _adjust(minutes: _shiftPressed ? 5 : 1),
+              onDecrease: () => _adjust(minutes: _shiftPressed ? -5 : -1),
             ),
           ],
         ),
@@ -357,7 +365,9 @@ class _WheelTimeField extends StatelessWidget {
   }
 }
 
-class _WheelDigit extends StatelessWidget {
+/// 一位滚轮数字：滚轮、上下箭头按钮、键盘（PgUp/PgDn/↑↓）都能调。
+/// 点击数字选中后有高亮，键盘调整作用于选中的那一项。
+class _WheelDigit extends StatefulWidget {
   const _WheelDigit({
     required this.value,
     required this.style,
@@ -375,42 +385,110 @@ class _WheelDigit extends StatelessWidget {
   final VoidCallback onDecrease;
 
   @override
+  State<_WheelDigit> createState() => _WheelDigitState();
+}
+
+class _WheelDigitState extends State<_WheelDigit> {
+  // 数字本身的焦点（接收键盘）；两个箭头按钮不参与 Tab 焦点遍历。
+  final FocusNode _focusNode = FocusNode();
+  final FocusNode _upButtonFocus = FocusNode(canRequestFocus: false);
+  final FocusNode _downButtonFocus = FocusNode(canRequestFocus: false);
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    _upButtonFocus.dispose();
+    _downButtonFocus.dispose();
+    super.dispose();
+  }
+
+  KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.pageUp || key == LogicalKeyboardKey.arrowUp) {
+      widget.onIncrease();
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.pageDown ||
+        key == LogicalKeyboardKey.arrowDown) {
+      widget.onDecrease();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Tooltip(
-      message: tooltip,
+      message: widget.tooltip,
       waitDuration: const Duration(milliseconds: 400),
       child: Listener(
         onPointerSignal: (event) {
           if (event is PointerScrollEvent) {
-            GestureBinding.instance.pointerSignalResolver.register(event, onScroll);
+            GestureBinding.instance.pointerSignalResolver
+                .register(event, widget.onScroll);
           }
         },
-        child: MouseRegion(
-          cursor: SystemMouseCursors.resizeUpDown,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 28, minHeight: 24),
-                iconSize: 18,
-                onPressed: onIncrease,
-                icon: const Icon(Icons.keyboard_arrow_up),
+        child: Focus(
+          focusNode: _focusNode,
+          onKeyEvent: _onKeyEvent,
+          child: GestureDetector(
+            onTap: _focusNode.requestFocus,
+            child: MouseRegion(
+              cursor: SystemMouseCursors.resizeUpDown,
+              child: ListenableBuilder(
+                listenable: _focusNode,
+                builder: (context, child) {
+                  final focused = _focusNode.hasFocus;
+                  return Container(
+                    decoration: BoxDecoration(
+                      color: focused
+                          ? theme.colorScheme.primary.withValues(alpha: 0.10)
+                          : null,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: focused
+                            ? theme.colorScheme.primary
+                            : Colors.transparent,
+                      ),
+                    ),
+                    child: child,
+                  );
+                },
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      focusNode: _upButtonFocus,
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints:
+                          const BoxConstraints(minWidth: 28, minHeight: 24),
+                      iconSize: 18,
+                      onPressed: widget.onIncrease,
+                      icon: const Icon(Icons.keyboard_arrow_up),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Text(widget.value, style: widget.style),
+                    ),
+                    IconButton(
+                      focusNode: _downButtonFocus,
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints:
+                          const BoxConstraints(minWidth: 28, minHeight: 24),
+                      iconSize: 18,
+                      onPressed: widget.onDecrease,
+                      icon: const Icon(Icons.keyboard_arrow_down),
+                    ),
+                  ],
+                ),
               ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Text(value, style: style),
-              ),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 28, minHeight: 24),
-                iconSize: 18,
-                onPressed: onDecrease,
-                icon: const Icon(Icons.keyboard_arrow_down),
-              ),
-            ],
+            ),
           ),
         ),
       ),

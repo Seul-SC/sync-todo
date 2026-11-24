@@ -9,7 +9,7 @@ namespace {
 constexpr const wchar_t kMutexName[] =
     L"Local\\SyncTodo.SingleInstance.8F3C2A91";
 constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
-constexpr const wchar_t kWindowTitle[] = L"同步待办";
+constexpr const wchar_t kWindowTitle[] = L"\u540C\u6B65\u5F85\u529E";
 
 BOOL CALLBACK FindExistingWindow(HWND hwnd, LPARAM lparam) {
   wchar_t class_name[256];
@@ -77,12 +77,22 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   std::vector<std::string> command_line_arguments =
       GetCommandLineArguments();
 
+  // Auto-start passes --minimized: do not show the window on the first frame,
+  // the app stays in the tray instead.
+  bool start_hidden = false;
+  for (const auto& argument : command_line_arguments) {
+    if (argument == "--minimized") {
+      start_hidden = true;
+      break;
+    }
+  }
+
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
-  FlutterWindow window(project);
+  FlutterWindow window(project, start_hidden);
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(1280, 720);
-  if (!window.Create(L"同步待办", origin, size)) {
+  if (!window.Create(kWindowTitle, origin, size)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);

@@ -91,8 +91,14 @@ class _SyncTodoAppState extends State<SyncTodoApp> with WidgetsBindingObserver {
   }
 
   Future<void> _bootstrap() async {
-    await _onAuth(Supabase.instance.client.auth.currentSession);
-    if (mounted) setState(() => _ready = true);
+    try {
+      await _onAuth(Supabase.instance.client.auth.currentSession);
+    } catch (e) {
+      // 本地缓存或登录态恢复失败时也要结束加载，不能永远停在转圈页。
+      debugPrint('bootstrap failed: $e');
+    } finally {
+      if (mounted) setState(() => _ready = true);
+    }
   }
 
   Future<void> _onAuth(Session? session) async {
