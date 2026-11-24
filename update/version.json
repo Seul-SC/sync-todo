@@ -1,0 +1,7 @@
+{
+  "version": "1.2.2",
+  "build": 16,
+  "notes": "修复本地缓存损坏导致的一直转圈；开机自启只驻留托盘、不弹主窗口；待办时间支持 PgUp/PgDn 与方向键调整；应用内更新改走 Gitee 直链。",
+  "windows": { "url": "https://gitee.com/seul-sc/sync-todo/releases/download/v1.2.2/SyncTodo-Setup-1.2.2.exe" },
+  "android": { "url": "https://gitee.com/seul-sc/sync-todo/releases/download/v1.2.2/sync-todo-1.2.2.apk" }
+}
